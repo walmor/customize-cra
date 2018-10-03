@@ -1,41 +1,47 @@
-const curry = require("lodash.curry");
-const flow = require("lodash.flow");
+const curry = require('lodash.curry');
+const flow = require('lodash.flow');
 
 const addBundleVisualizer = () => config => {
-  const BundleAnalyzerPlugin = require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
+  const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 
   config.plugins.push(
     new BundleAnalyzerPlugin({
-      analyzerMode: "static",
-      reportFilename: "report.html"
+      analyzerMode: 'static',
+      reportFilename: 'report.html'
     })
   );
   return config;
 };
 
 const addBabelPlugin = plugin => config => {
-  let rulesWithBabel = config.module.rules.filter(
-    r => r.oneOf && r.oneOf.some(r => Array.isArray(r.use) && r.use.some(u => u.options && u.options.babelrc != void 0))
-  );
+  const babelLoaderFilter = rule =>
+    rule.loader && rule.loader.includes('babel') && rule.options && rule.options.plugins;
 
-  for (let rb of rulesWithBabel) {
-    for (let r of rb.oneOf) {
-      if (r.use) {
-        for (let u of r.use) {
-          if (u.options && u.options.babelrc != void 0) {
-            u.options.plugins = (u.options.plugins || []).concat([plugin]);
-          }
-        }
-      }
-    }
+  // First, try to find the babel loader inside the oneOf array.
+  // This is where we can find it when working with react-scripts@2.0.3.
+  let loaders = config.module.rules.find(rule => Array.isArray(rule.oneOf)).oneOf;
+
+  let babelLoader = loaders.find(babelLoaderFilter);
+
+  // If the loader was not found, try to find it inside of the "use" array, within the rules.
+  // This should work when dealing with react-scripts@2.0.0.next.* versions.
+  if (!babelLoader) {
+    loaders = loaders.reduce((ldrs, rule) => ldrs.concat(rule.use || []), []);
+    babelLoader = loaders.find(babelLoaderFilter);
   }
+
+  babelLoader.options.plugins.push(plugin);
+
   return config;
 };
 
-const addDecoratorsLegacy = () => config => addBabelPlugin(["@babel/plugin-proposal-decorators", { legacy: true }])(config);
+const addDecoratorsLegacy = () => config =>
+  addBabelPlugin(['@babel/plugin-proposal-decorators', { legacy: true }])(config);
 
 const disableEsLint = () => config => {
-  let eslintRules = config.module.rules.filter(r => r.use && r.use.some(u => u.options && u.options.useEslintrc != void 0));
+  let eslintRules = config.module.rules.filter(
+    r => r.use && r.use.some(u => u.options && u.options.useEslintrc != void 0)
+  );
   eslintRules.forEach(rule => {
     config.module.rules = config.module.rules.filter(r => r !== rule);
   });
